@@ -5,6 +5,15 @@
 #include <vector>
 #include <functional>
 #include <type_traits>
+#include <tuple>
+
+// Helper to compare member pointers
+template <typename T, typename MemberType, MemberType T::* Member>
+struct member_pointer_comparator {
+    static constexpr bool compare(MemberType T::* other) {
+        return Member == other;
+    }
+};
 
 template<typename T, auto... Members>
 class unordered_index_map {
@@ -54,10 +63,28 @@ private:
     // Helper to get the index for a specific member
     template<auto Member>
     auto& get_index() const {
-        using MemberType = std::decay_t<decltype(std::declval<T>().*Member)>;
-        static std::unordered_map<MemberType, std::vector<size_t>> index;
-        return index;
+        return std::get<index_of<Member>()>(indexes);
     }
+
+    // Helper to get the index of a member in the tuple
+    template<auto Member, size_t Index = 0, auto First, auto... Rest>
+    constexpr static size_t index_of_impl() {
+        using MemberType = decltype(Member);
+        if constexpr (member_pointer_comparator<T, MemberType, Member>::compare(First)) {
+            return Index;
+        }
+        else {
+            return index_of_impl<Member, Index + 1, Rest...>();
+        }
+    }
+
+    template<auto Member>
+    constexpr static size_t index_of() {
+        return index_of_impl<Member, 0, Members...>();
+    }
+
+    // Tuple of unordered maps for each member
+    std::tuple<std::unordered_map<std::decay_t<decltype(std::declval<T>().*Members)>, std::vector<size_t>>...> indexes;
 };
 
 #endif // UNORDERED_INDEX_MAP_H
